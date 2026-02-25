@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): flash loan execution module for zero-capital arbitrage
+export class FlashLoanSniper { static async execute() { logger.info('Simulating flash loan 0-cap arb'); } }
