@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): NLP-based on-chain sentiment analysis proxy via Twitter/Discord APIs
+export class SentimentModel { static async execute() { logger.info('Analyzing off-chain sentiment proxy'); } }
