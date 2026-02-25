@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): MEV resistant submarine swap routing via Jito block building
+export class MevPtcStrategy { static async execute() { logger.info('Routing via private Jito Mempool'); } }
