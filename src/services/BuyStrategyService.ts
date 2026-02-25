@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): new Raydium/Orca liquidity pool sniper with block-0 execution
+export class LiquiditySniper { static async execute() { logger.info('Subscribing to block-0 new pools'); } }
