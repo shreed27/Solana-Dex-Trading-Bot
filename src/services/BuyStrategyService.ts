@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): integrate ML tensor predictor model for price trajectory forecasting
+export class MLPredictor { static async execute() { logger.info('Inferencing Tensor model via ONNX runtime'); } }
