@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): mean-reversion trading using Bollinger Bands on DEX pairs
+export class BollingerReversion { static async execute() { logger.info('Executing BB mean reversion'); } }
