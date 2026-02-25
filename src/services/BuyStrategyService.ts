@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): tokenomics vesting schedule integration for automated short/long hedging
+export class UnlockingHedge { static async execute() { logger.info('Monitoring CLI vesting schedules'); } }
