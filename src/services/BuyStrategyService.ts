@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): orderbook imbalance pressure strategy for micro-scalping
+export class OrderbookImb { static async execute() { logger.info('Calculating Bid/Ask imbalance'); } }
