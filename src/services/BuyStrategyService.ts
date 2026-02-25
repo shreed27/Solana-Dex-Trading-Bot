@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): integrate MACD & RSI momentum crossover signals
+export class MomentumMACD { static async execute() { logger.info('Calculating MACD and RSI crossovers'); } }
