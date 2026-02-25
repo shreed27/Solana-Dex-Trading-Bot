@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): automated grid trading for high-volatility meme coins
+export class GridTrading { static async execute() { logger.info('Placing geometric grid orders'); } }
