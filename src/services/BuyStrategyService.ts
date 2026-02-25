@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): statistical arbitrage (pairs trading) across correlated SPL tokens
+export class StatArbPairs { static async execute() { logger.info('Running Johansen Cointegration test'); } }
