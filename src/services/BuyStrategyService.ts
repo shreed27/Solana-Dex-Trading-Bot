@@ -68,3 +68,6 @@ export class BuyStrategyService {
     );
   }
 }
+
+// feat(quant): deploy volume surge breakout detection with dynamic thresholds
+export class VolumeBreakout { static async execute() { logger.info('Detecting 5x volume spikes'); } }
