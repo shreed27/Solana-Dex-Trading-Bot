@@ -1,0 +1,226 @@
+import mongoose, { Schema, Document } from "mongoose";
+
+export interface IStrategyConfigDoc extends Document {
+  strategyId: string;
+  name: string;
+  category: "signal" | "autonomous" | "risk" | "execution";
+  tier: "fast" | "normal" | "slow";
+  enabled: boolean;
+  weight: number;
+  intervalMs: number;
+  params: Record<string, any>;
+  circuitBreakerThreshold: number;
+  consecutiveFailures: number;
+  lastRunAt?: Date;
+  lastError?: string;
+}
+
+const StrategyConfigSchema: Schema = new Schema({
+  strategyId: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  category: {
+    type: String,
+    enum: ["signal", "autonomous", "risk", "execution"],
+    required: true,
+  },
+  tier: { type: String, enum: ["fast", "normal", "slow"], required: true },
+  enabled: { type: Boolean, default: true },
+  weight: { type: Number, default: 0.1, min: 0, max: 1 },
+  intervalMs: { type: Number, default: 60000 },
+  params: { type: Schema.Types.Mixed, default: {} },
+  circuitBreakerThreshold: { type: Number, default: 5 },
+  consecutiveFailures: { type: Number, default: 0 },
+  lastRunAt: { type: Date },
+  lastError: { type: String },
+});
+
+export const StrategyConfigModel = mongoose.model<IStrategyConfigDoc>(
+  "StrategyConfig",
+  StrategyConfigSchema
+);
+
+export const DEFAULT_STRATEGY_CONFIGS: Omit<
+  IStrategyConfigDoc,
+  keyof Document
+>[] = [
+  {
+    strategyId: "macd-momentum",
+    name: "MACD & RSI Momentum Crossover",
+    category: "signal",
+    tier: "normal",
+    enabled: true,
+    weight: 0.15,
+    intervalMs: 60000,
+    params: { mcapMin: 10_000_000, mcapMax: 50_000_000 },
+    circuitBreakerThreshold: 5,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "volume-breakout",
+    name: "Volume Surge Breakout Detection",
+    category: "signal",
+    tier: "normal",
+    enabled: true,
+    weight: 0.2,
+    intervalMs: 60000,
+    params: { spikeMultiplier: 5, priceChangeThreshold: 0.02 },
+    circuitBreakerThreshold: 5,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "sentiment-analysis",
+    name: "NLP Sentiment Analysis",
+    category: "signal",
+    tier: "slow",
+    enabled: true,
+    weight: 0.12,
+    intervalMs: 300000,
+    params: { twitterWeight: 0.6, discordWeight: 0.4, bullThreshold: 0.65, bearThreshold: 0.35 },
+    circuitBreakerThreshold: 5,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "mean-reversion-bb",
+    name: "Mean Reversion with Bollinger Bands",
+    category: "signal",
+    tier: "normal",
+    enabled: true,
+    weight: 0.1,
+    intervalMs: 60000,
+    params: { bbPeriod: 20, bbStdDev: 2, adxThreshold: 25 },
+    circuitBreakerThreshold: 5,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "orderbook-imbalance",
+    name: "Orderbook Imbalance Micro-Scalping",
+    category: "signal",
+    tier: "fast",
+    enabled: true,
+    weight: 0.08,
+    intervalMs: 5000,
+    params: { imbalanceThreshold: 0.6, levels: 5 },
+    circuitBreakerThreshold: 5,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "ml-tensor-predictor",
+    name: "ML LSTM Trajectory Predictor",
+    category: "signal",
+    tier: "slow",
+    enabled: true,
+    weight: 0.18,
+    intervalMs: 300000,
+    params: { maxTokens: 10, modelPath: "./models/lstm_price_predictor.onnx" },
+    circuitBreakerThreshold: 5,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "whale-copy-trading",
+    name: "Whale Wallet Copy Trading",
+    category: "signal",
+    tier: "normal",
+    enabled: true,
+    weight: 0.17,
+    intervalMs: 60000,
+    params: { maxWhales: 50, lookbackMinutes: 5 },
+    circuitBreakerThreshold: 5,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "arbitrage-triangulation",
+    name: "Multi-hop Triangular Arbitrage",
+    category: "autonomous",
+    tier: "fast",
+    enabled: true,
+    weight: 1.0,
+    intervalMs: 2000,
+    params: { minProfitBps: 20, maxHops: 4 },
+    circuitBreakerThreshold: 10,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "flash-loan-sniper",
+    name: "Flash Loan Zero-Capital Arbitrage",
+    category: "autonomous",
+    tier: "fast",
+    enabled: true,
+    weight: 1.0,
+    intervalMs: 5000,
+    params: { minProfitUsd: 5 },
+    circuitBreakerThreshold: 10,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "liquidity-pool-sniper",
+    name: "Liquidity Pool Block-0 Sniper",
+    category: "autonomous",
+    tier: "fast",
+    enabled: true,
+    weight: 1.0,
+    intervalMs: 0,
+    params: { snipeAmountUsdc: 15, minRiskScore: 70 },
+    circuitBreakerThreshold: 10,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "grid-trading-volatility",
+    name: "Geometric Grid Trading",
+    category: "autonomous",
+    tier: "normal",
+    enabled: true,
+    weight: 1.0,
+    intervalMs: 10000,
+    params: { gridCount: 25, upperBoundMultiplier: 1.5, lowerBoundMultiplier: 0.5, killSwitchStdDev: 3 },
+    circuitBreakerThreshold: 5,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "stat-arb-pairs",
+    name: "Statistical Arbitrage Pairs Trading",
+    category: "autonomous",
+    tier: "slow",
+    enabled: true,
+    weight: 1.0,
+    intervalMs: 300000,
+    params: { zScoreEntry: 2.0, zScoreExit: 0.5, maxPairs: 5 },
+    circuitBreakerThreshold: 5,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "tokenomics-unvesting",
+    name: "Tokenomics Vesting Hedge Automation",
+    category: "autonomous",
+    tier: "slow",
+    enabled: true,
+    weight: 1.0,
+    intervalMs: 3600000,
+    params: { unlockWindowHours: 48, minUnlockUsd: 50000 },
+    circuitBreakerThreshold: 5,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "smart-contract-risk",
+    name: "Smart Contract Risk Scorer",
+    category: "risk",
+    tier: "normal",
+    enabled: true,
+    weight: 1.0,
+    intervalMs: 0,
+    params: { minSafetyScore: 85, cacheTtlMs: 300000 },
+    circuitBreakerThreshold: 10,
+    consecutiveFailures: 0,
+  },
+  {
+    strategyId: "mev-submarine-routing",
+    name: "MEV Submarine Routing via Jito",
+    category: "execution",
+    tier: "fast",
+    enabled: true,
+    weight: 1.0,
+    intervalMs: 0,
+    params: { defaultTipLamports: 10000, maxTipLamports: 100000 },
+    circuitBreakerThreshold: 10,
+    consecutiveFailures: 0,
+  },
+];
