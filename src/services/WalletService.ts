@@ -15,8 +15,8 @@ export class WalletService {
   private connection: Connection;
 
   constructor() {
-    this.wallet = this.loadWalletFromPrivateKey(env.solanaPrivateKey);
-    this.connection = new Connection(env.solanaRpcUrl);
+    this.wallet = this.loadWalletFromPrivateKey(env.solanaPrivateKey!);
+    this.connection = new Connection(env.solanaRpcUrl!);
   }
 
   private loadWalletFromPrivateKey(privateKeyString: string): Keypair {

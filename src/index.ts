@@ -1,65 +1,58 @@
-import { DexScreenerClient } from "./services/DexScreenerClient";
-import { WalletService } from "./services/WalletService";
+import { PolymarketOrchestrator } from "./polymarket/PolymarketOrchestrator";
 import { logger } from "./utils/logger";
-import { connectToDatabase } from "./config/mongoose";
-import cron from "node-cron";
-import { BuyStrategyService } from "./services/BuyStrategyService";
-import { PositionService } from "./services/PositionService";
-import { USDC_MINT_ADDRESS } from "./utils/constants";
 
 async function main() {
-  let dexScreener: DexScreenerClient | null = null;
-  const walletService = new WalletService();
-  const owner = walletService.getPublicKey().toString();
+  const mode = process.env.BOT_MODE || "polymarket";
 
-  (async () => {
-    await connectToDatabase();
+  if (mode === "polymarket") {
+    const orchestrator = new PolymarketOrchestrator();
 
-    // Schedule buy strategy to run every 2 minutes
-    cron.schedule("*/1 * * * *", async () => {
-      try {
-        await BuyStrategyService.run(owner);
-      } catch (err) {
-        console.error("Buy strategy error:", err);
-      }
-    });
+    try {
+      await orchestrator.start();
+      logger.success(
+        "Polymarket trading bot started (BTC/ETH/XRP 5M/15M)"
+      );
+    } catch (err) {
+      logger.error("Failed to start Polymarket bot", err);
+      process.exit(1);
+    }
 
-    // Schedule sell/exit logic to run every 2 minutes
-    cron.schedule("*/2 * * * *", async () => {
-      try {
-        const openPositions = await PositionService.getOpenPositions();
-        if (openPositions.length === 0) return;
-        for (const pos of openPositions) {
-          // Run PnL check and handle sell/exit for each position
-          await PositionService.checkAndHandlePnL(
-            owner,
-            pos.tokenAddress,
-            USDC_MINT_ADDRESS
-          );
-        }
-      } catch (err) {
-        console.error("PnL check error:", err);
-      }
-    });
-
-    // Initialize wallet
-    logger.success(`Wallet loaded: ${owner}`);
-    const solBalance = await walletService.getSolBalance();
-    const usdcBalance = await walletService.getUsdcBalance();
-    logger.info(`My Sol balance: ${solBalance}`);
-    logger.info(`My USDC balance: ${usdcBalance}`);
-
-    // Initialize and connect to DexScreener
-    dexScreener = new DexScreenerClient();
-    await dexScreener.connect();
     process.on("SIGINT", async () => {
       logger.info("Shutting down...");
-      if (dexScreener) {
-        await dexScreener.disconnect();
-      }
+      await orchestrator.shutdown();
       process.exit(0);
     });
-  })();
+
+    process.on("SIGTERM", async () => {
+      logger.info("Received SIGTERM, shutting down...");
+      await orchestrator.shutdown();
+      process.exit(0);
+    });
+  } else {
+    // Legacy Solana DEX mode
+    const { Orchestrator } = await import("./engine/Orchestrator");
+    const orchestrator = new Orchestrator();
+
+    try {
+      await orchestrator.start();
+      logger.success("Solana DEX trading bot started with all 15 strategies");
+    } catch (err) {
+      logger.error("Failed to start trading bot", err);
+      process.exit(1);
+    }
+
+    process.on("SIGINT", async () => {
+      logger.info("Shutting down...");
+      await orchestrator.shutdown();
+      process.exit(0);
+    });
+
+    process.on("SIGTERM", async () => {
+      logger.info("Received SIGTERM, shutting down...");
+      await orchestrator.shutdown();
+      process.exit(0);
+    });
+  }
 }
 
 main();
