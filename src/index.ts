@@ -10,10 +10,10 @@ async function main() {
     try {
       await orchestrator.start();
       logger.success(
-        "Polymarket trading bot started (BTC/ETH/XRP 5M/15M)"
+        "Multi-exchange trading bot started (Polymarket + Kalshi + Hyperliquid)"
       );
     } catch (err) {
-      logger.error("Failed to start Polymarket bot", err);
+      logger.error("Failed to start trading bot", err);
       process.exit(1);
     }
 

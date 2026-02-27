@@ -18,6 +18,16 @@ import {
 import { PolymarketAsset, PolymarketInterval } from "../types/polymarket.types";
 import { logger } from "../utils/logger";
 
+// Multi-exchange imports
+import { KalshiClient } from "../exchange/KalshiClient";
+import { KalshiMarketDiscovery } from "../exchange/KalshiMarketDiscovery";
+import { HyperliquidClient } from "../exchange/HyperliquidClient";
+import { HyperliquidMarketData } from "../exchange/HyperliquidMarketData";
+import { MultiExchangeTickEngine } from "../exchange/MultiExchangeTickEngine";
+import { DemoWallet } from "../exchange/DemoWallet";
+import { DashboardServer } from "../dashboard/DashboardServer";
+import { env } from "../config/environment";
+
 // Polymarket strategies
 import { PolyMACDMomentumStrategy } from "../strategies/polymarket/PolyMACDMomentumStrategy";
 import { PolyVolumeBreakoutStrategy } from "../strategies/polymarket/PolyVolumeBreakoutStrategy";
@@ -118,6 +128,15 @@ export class PolymarketOrchestrator {
   private signalAggregator: SignalAggregator;
   private hftEngine: HFTTickEngine;
 
+  // Multi-exchange components
+  private kalshiClient: KalshiClient;
+  private kalshiDiscovery: KalshiMarketDiscovery;
+  private hyperliquidClient: HyperliquidClient;
+  private hyperliquidData: HyperliquidMarketData;
+  private multiExchangeEngine: MultiExchangeTickEngine;
+  private demoWallet: DemoWallet;
+  private dashboardServer: DashboardServer;
+
   private strategies: Map<string, IStrategy> = new Map();
   private cronJobs: ReturnType<typeof cron.schedule>[] = [];
 
@@ -141,6 +160,32 @@ export class PolymarketOrchestrator {
       this.client,
       this.priceFeed,
       this.discovery
+    );
+
+    // Multi-exchange setup
+    this.kalshiClient = new KalshiClient(env.kalshiApiKey);
+    this.kalshiDiscovery = new KalshiMarketDiscovery(this.kalshiClient);
+    this.hyperliquidClient = new HyperliquidClient();
+    this.hyperliquidData = new HyperliquidMarketData(this.hyperliquidClient);
+    this.demoWallet = new DemoWallet(env.demoStartingBalance);
+
+    const perfTracker = this.hftEngine.getPerformanceTracker();
+    this.multiExchangeEngine = new MultiExchangeTickEngine(
+      this.kalshiClient,
+      this.kalshiDiscovery,
+      this.hyperliquidClient,
+      this.hyperliquidData,
+      this.demoWallet,
+      perfTracker,
+      this.hftEngine
+    );
+
+    this.dashboardServer = new DashboardServer(
+      this.demoWallet,
+      perfTracker,
+      this.multiExchangeEngine,
+      this.hftEngine,
+      env.dashboardPort
     );
   }
 
@@ -178,10 +223,23 @@ export class PolymarketOrchestrator {
     // 8. Start HFT tick engine (500ms sub-second loop)
     await this.hftEngine.start();
 
-    // 9. Log status
+    // 9. Start multi-exchange engine (Kalshi + Hyperliquid)
+    await this.multiExchangeEngine.start();
+
+    // 10. Start dashboard server
+    await this.dashboardServer.start();
+
+    // 11. Log status
     const stats = await this.positionManager.getStats();
+    const mexStats = this.multiExchangeEngine.getStats();
     logger.success(
-      `=== Polymarket Bot Ready | ${this.strategies.size} strategies + 4 HFT | ${stats.openCount} open positions ===`
+      `=== Trading Bot Ready | ${this.strategies.size} strategies + 4 HFT | ${stats.openCount} open positions ===`
+    );
+    logger.success(
+      `=== Multi-Exchange: Kalshi (${mexStats.kalshiMarkets} markets) + Hyperliquid (${mexStats.hyperliquidCoins} perps) ===`
+    );
+    logger.success(
+      `=== Dashboard: http://localhost:${env.dashboardPort} | Demo Wallet: $${this.demoWallet.getBalance().toFixed(2)} ===`
     );
   }
 
@@ -353,12 +411,37 @@ export class PolymarketOrchestrator {
     logger.info(
       `[HFT Engine] Ticks: ${hftStats.ticksProcessed} | Opps: ${hftStats.opportunitiesFound} | Trades: ${hftStats.tradesExecuted} | Open Orders: ${hftStats.openOrders}`
     );
+
+    // Multi-exchange metrics
+    const mexStats = this.multiExchangeEngine.getStats();
+    const walletState = this.demoWallet.getState();
+    logger.info(
+      `[Multi-Exchange] Ticks: ${mexStats.tickCount} | Cross-Opps: ${mexStats.crossExchangeOpps} | Cross-Trades: ${mexStats.crossExchangeTrades} | ` +
+        `Kalshi: ${mexStats.kalshiBooksCount}/${mexStats.kalshiMarkets} | Hyperliquid: ${mexStats.hyperliquidBooksCount}/${mexStats.hyperliquidCoins}`
+    );
+    logger.info(
+      `[DemoWallet] Balance: $${walletState.totalBalance.toFixed(2)} | Equity: $${walletState.totalEquity.toFixed(2)} | ` +
+        `Positions: ${walletState.positions.length} | Realized PnL: $${walletState.totalRealizedPnl.toFixed(2)} | ` +
+        `Dashboard clients: ${this.dashboardServer.getClientCount()}`
+    );
   }
 
-  async shutdown(): Promise<void> {
-    logger.info("Polymarket Orchestrator shutting down...");
+  // Public accessors for dashboard/test
+  getDemoWallet(): DemoWallet { return this.demoWallet; }
+  getMultiExchangeEngine(): MultiExchangeTickEngine { return this.multiExchangeEngine; }
+  getDashboardServer(): DashboardServer { return this.dashboardServer; }
+  getHFTEngine(): HFTTickEngine { return this.hftEngine; }
 
-    // Stop HFT engine first (cancels all open orders)
+  async shutdown(): Promise<void> {
+    logger.info("Orchestrator shutting down...");
+
+    // Stop dashboard first
+    this.dashboardServer.stop();
+
+    // Stop multi-exchange engine
+    await this.multiExchangeEngine.stop();
+
+    // Stop HFT engine (cancels all open orders)
     await this.hftEngine.stop();
 
     for (const job of this.cronJobs) {
@@ -377,6 +460,10 @@ export class PolymarketOrchestrator {
     await this.discovery.shutdown();
     await this.priceFeed.shutdown();
 
-    logger.info("Polymarket Orchestrator shutdown complete");
+    const walletState = this.demoWallet.getState();
+    logger.info(
+      `Final Demo Wallet: $${walletState.totalEquity.toFixed(2)} | Realized PnL: $${walletState.totalRealizedPnl.toFixed(2)}`
+    );
+    logger.info("Orchestrator shutdown complete");
   }
 }
