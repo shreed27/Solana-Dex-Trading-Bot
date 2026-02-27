@@ -451,4 +451,25 @@ export class HFTTickEngine {
       })),
     };
   }
+
+  /**
+   * Get latest tick snapshots for all markets.
+   * Used by MultiExchangeTickEngine to access Polymarket data.
+   */
+  getLatestSnapshots(): Map<string, ITickSnapshot> {
+    const latest = new Map<string, ITickSnapshot>();
+    for (const [key, history] of this.tickHistory) {
+      if (history.length > 0) {
+        latest.set(key, history[history.length - 1]);
+      }
+    }
+    return latest;
+  }
+
+  /**
+   * Get the internal performance tracker for shared access.
+   */
+  getPerformanceTracker(): PerformanceTracker {
+    return this.perfTracker;
+  }
 }

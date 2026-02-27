@@ -77,6 +77,7 @@ export interface IHFTTrade {
   orderId?: string;
   openedAt: number;
   closedAt: number;
+  exchange?: string; // "polymarket" | "kalshi" | "hyperliquid"
 }
 
 // ==================== PERFORMANCE ====================

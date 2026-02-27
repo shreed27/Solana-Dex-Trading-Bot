@@ -94,6 +94,21 @@ export class PerformanceTracker {
   }
 
   /**
+   * Get metrics for a specific exchange.
+   */
+  getExchangeMetrics(exchange: string): IPerformanceMetrics {
+    const exchangeTrades = this.allTrades.filter((t) => t.exchange === exchange);
+    return this.calculateMetrics(exchangeTrades);
+  }
+
+  /**
+   * Get recent trades (last N).
+   */
+  getRecentTrades(count = 50): IHFTTrade[] {
+    return this.allTrades.slice(-count);
+  }
+
+  /**
    * Get all rolling window metrics.
    */
   getAllWindows(): IPerformanceWindow[] {
