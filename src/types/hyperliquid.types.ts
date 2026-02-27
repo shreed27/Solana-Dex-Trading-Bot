@@ -87,6 +87,9 @@ export interface IHyperliquidWsSubscription {
   };
 }
 
-// Target coins for trading
-export const HYPERLIQUID_COINS = ["BTC", "ETH", "SOL", "XRP"] as const;
+// Target coins for HL perp trading (12 max to avoid 429 rate limiting)
+export const HYPERLIQUID_COINS = [
+  "BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX",
+  "LINK", "SUI", "NEAR", "APT", "ARB", "OP",
+] as const;
 export type HyperliquidCoin = (typeof HYPERLIQUID_COINS)[number];

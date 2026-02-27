@@ -3,7 +3,7 @@ import { logger } from "../utils/logger";
 import { v4 as uuidv4 } from "uuid";
 
 const MAX_EQUITY_POINTS = 10000;
-const DEFAULT_POSITION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_POSITION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 export class DemoWallet {
   private balance: number;
@@ -22,13 +22,23 @@ export class DemoWallet {
     logger.info(`[DemoWallet] Initialized with $${startingBalance.toFixed(2)}`);
   }
 
+  /**
+   * Open a position with optional leverage.
+   * - margin = size (deducted from balance)
+   * - notional = size * leverage (actual market exposure)
+   * - PnL is calculated on notional, not margin
+   *
+   * Polymarket: leverage=1 (tokens are binary, no leverage)
+   * Hyperliquid: leverage=1-20x (perp futures)
+   */
   openPosition(
     exchange: string,
     symbol: string,
     side: "LONG" | "SHORT",
     size: number,
     entryPrice: number,
-    strategy: string
+    strategy: string,
+    leverage = 1
   ): IDemoPosition | null {
     if (size <= 0 || size > this.balance) {
       return null;
@@ -39,7 +49,9 @@ export class DemoWallet {
       exchange,
       symbol,
       side,
-      size,
+      size,           // margin posted
+      leverage,
+      notional: size * leverage,  // actual exposure
       entryPrice,
       currentPrice: entryPrice,
       unrealizedPnl: 0,
@@ -52,6 +64,11 @@ export class DemoWallet {
     return position;
   }
 
+  /**
+   * Close position. PnL is calculated on NOTIONAL (leveraged) exposure.
+   * Returns realized PnL (can be >> margin for leveraged trades).
+   * Liquidation: if loss >= margin, position is wiped (max loss = margin).
+   */
   closePosition(positionId: string, exitPrice: number): number {
     const pos = this.positions.get(positionId);
     if (!pos) return 0;
@@ -59,7 +76,14 @@ export class DemoWallet {
     const priceDelta = pos.side === "LONG"
       ? exitPrice - pos.entryPrice
       : pos.entryPrice - exitPrice;
-    const pnl = (priceDelta / pos.entryPrice) * pos.size;
+
+    // PnL on NOTIONAL exposure (leveraged)
+    let pnl = (priceDelta / pos.entryPrice) * pos.notional;
+
+    // Liquidation protection: max loss = margin posted
+    if (pnl < -pos.size) {
+      pnl = -pos.size;
+    }
 
     this.balance += pos.size + pnl;
     this.totalRealizedPnl += pnl;
@@ -79,14 +103,20 @@ export class DemoWallet {
     const priceDelta = pos.side === "LONG"
       ? currentPrice - pos.entryPrice
       : pos.entryPrice - currentPrice;
-    pos.unrealizedPnl = (priceDelta / pos.entryPrice) * pos.size;
+
+    // Unrealized PnL on NOTIONAL (leveraged)
+    let pnl = (priceDelta / pos.entryPrice) * pos.notional;
+    // Cap loss at margin
+    if (pnl < -pos.size) pnl = -pos.size;
+    pos.unrealizedPnl = pnl;
   }
 
   checkAndCloseExpiredPositions(getCurrentPrice: (exchange: string, symbol: string) => number): number {
     const now = Date.now();
     let totalClosed = 0;
 
-    for (const [id, pos] of this.positions) {
+    const entries = Array.from(this.positions.entries());
+    for (const [id, pos] of entries) {
       if (now - pos.openedAt > this.positionTimeoutMs) {
         const price = getCurrentPrice(pos.exchange, pos.symbol);
         const pnl = this.closePosition(id, price);
@@ -98,11 +128,32 @@ export class DemoWallet {
     return totalClosed;
   }
 
+  /**
+   * Check if position should be liquidated (loss >= margin).
+   * Returns true if liquidated.
+   */
+  checkLiquidation(positionId: string, currentPrice: number): boolean {
+    const pos = this.positions.get(positionId);
+    if (!pos || pos.leverage <= 1) return false;
+
+    const priceDelta = pos.side === "LONG"
+      ? currentPrice - pos.entryPrice
+      : pos.entryPrice - currentPrice;
+    const pnl = (priceDelta / pos.entryPrice) * pos.notional;
+
+    // Liquidation: loss exceeds 90% of margin (leave 10% for fees)
+    if (pnl <= -pos.size * 0.9) {
+      this.closePosition(positionId, currentPrice);
+      logger.warning(`[LIQUIDATED] ${pos.symbol}@${pos.exchange} ${pos.leverage}x | Margin: $${pos.size.toFixed(2)}`);
+      return true;
+    }
+    return false;
+  }
+
   recordEquity(): void {
     const equity = this.getEquity();
     this.equityCurve.push({ timestamp: Date.now(), equity });
 
-    // Ring buffer — keep last N points
     if (this.equityCurve.length > MAX_EQUITY_POINTS) {
       this.equityCurve = this.equityCurve.slice(-MAX_EQUITY_POINTS);
     }
@@ -125,9 +176,7 @@ export class DemoWallet {
     for (const pos of this.positions.values()) {
       total += pos.size;
     }
-    // Note: balance was already reduced when opening, size is tracked separately
-    // Equity = balance + sum(size + unrealizedPnl) for each position
-    return 0; // size already subtracted from balance, unrealized tracked separately
+    return total;
   }
 
   getState(): IDemoWalletState {
@@ -145,7 +194,7 @@ export class DemoWallet {
       unrealizedPnl,
       totalEquity: this.balance + positionsValue + unrealizedPnl,
       positions,
-      equityCurve: this.equityCurve.slice(-500), // send last 500 to dashboard
+      equityCurve: this.equityCurve.slice(-500),
       perExchangePnl: Object.fromEntries(this.perExchangePnl),
       totalRealizedPnl: this.totalRealizedPnl,
     };

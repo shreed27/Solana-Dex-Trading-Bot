@@ -45,7 +45,9 @@ export interface IDemoPosition {
   exchange: string;
   symbol: string;
   side: "LONG" | "SHORT";
-  size: number; // USDC value
+  size: number; // USDC margin posted
+  leverage: number; // leverage multiplier (1x = spot, 20x = perp)
+  notional: number; // size * leverage = actual exposure
   entryPrice: number;
   currentPrice: number;
   unrealizedPnl: number;
