@@ -21,6 +21,15 @@ interface EnvironmentConfig {
   discordChannelIds?: string;
   jitoBlockEngineUrl?: string;
   onnxModelPath?: string;
+  // Kalshi config
+  kalshiApiKey?: string;
+  kalshiPrivateKeyPath?: string;
+  // Hyperliquid config
+  hyperliquidPrivateKey?: string;
+  // Demo wallet
+  demoStartingBalance: number;
+  // Dashboard
+  dashboardPort: number;
 }
 
 function validateEnvironment(): EnvironmentConfig {
@@ -59,6 +68,15 @@ function validateEnvironment(): EnvironmentConfig {
     discordChannelIds: process.env.DISCORD_CHANNEL_IDS,
     jitoBlockEngineUrl: process.env.JITO_BLOCK_ENGINE_URL,
     onnxModelPath: process.env.ONNX_MODEL_PATH,
+    // Kalshi
+    kalshiApiKey: process.env.KALSHI_API_KEY,
+    kalshiPrivateKeyPath: process.env.KALSHI_PRIVATE_KEY_PATH,
+    // Hyperliquid
+    hyperliquidPrivateKey: process.env.HYPERLIQUID_PRIVATE_KEY,
+    // Demo wallet
+    demoStartingBalance: parseFloat(process.env.DEMO_STARTING_BALANCE || "100"),
+    // Dashboard
+    dashboardPort: parseInt(process.env.DASHBOARD_PORT || "3847", 10),
   };
 }
 
