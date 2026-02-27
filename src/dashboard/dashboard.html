@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Exchange Trading Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: #0a0e17;
+    color: #e0e6ed;
+    padding: 16px;
+    font-size: 13px;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+  .header h1 { font-size: 16px; color: #60a5fa; }
+  .header-stats { display: flex; gap: 24px; }
+  .header-stat { text-align: center; }
+  .header-stat .label { font-size: 10px; color: #6b7280; text-transform: uppercase; }
+  .header-stat .value { font-size: 18px; font-weight: bold; }
+  .positive { color: #34d399; }
+  .negative { color: #f87171; }
+  .neutral { color: #9ca3af; }
+
+  .grid { display: grid; gap: 16px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  .card {
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card h2 {
+    font-size: 12px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #1f2937;
+    padding-bottom: 8px;
+  }
+
+  .exchange-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .exchange-name {
+    font-size: 14px;
+    font-weight: bold;
+  }
+  .exchange-name.polymarket { color: #a78bfa; }
+  .exchange-name.kalshi { color: #60a5fa; }
+  .exchange-name.hyperliquid { color: #34d399; }
+
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid #1f293755;
+  }
+  .metric-label { color: #6b7280; }
+  .metric-value { font-weight: bold; }
+
+  .chart-container {
+    position: relative;
+    height: 200px;
+    width: 100%;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th {
+    text-align: left;
+    color: #6b7280;
+    padding: 6px 8px;
+    border-bottom: 1px solid #1f2937;
+    font-weight: normal;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+  td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #1f293744;
+  }
+  tr:hover { background: #1f293733; }
+
+  .status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+  }
+  .status-dot.connected { background: #34d399; }
+  .status-dot.disconnected { background: #f87171; }
+
+  .trades-feed {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .ws-status {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .ws-status.connected { background: #064e3b; color: #34d399; }
+  .ws-status.disconnected { background: #7f1d1d; color: #f87171; }
+
+  @media (max-width: 1024px) {
+    .grid-3 { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Multi-Exchange Trading Dashboard</h1>
+  <div class="header-stats">
+    <div class="header-stat">
+      <div class="label">Equity</div>
+      <div class="value" id="total-equity">$100.00</div>
+    </div>
+    <div class="header-stat">
+      <div class="label">P&L</div>
+      <div class="value" id="total-pnl">$0.00</div>
+    </div>
+    <div class="header-stat">
+      <div class="label">P&L %</div>
+      <div class="value" id="pnl-pct">0.00%</div>
+    </div>
+    <div class="header-stat">
+      <div class="label">Trades</div>
+      <div class="value neutral" id="total-trades">0</div>
+    </div>
+    <div class="header-stat">
+      <div class="label">Win Rate</div>
+      <div class="value" id="win-rate">0%</div>
+    </div>
+    <div class="header-stat">
+      <div class="label">Ticks/s</div>
+      <div class="value neutral" id="ticks-sec">0</div>
+    </div>
+    <div class="header-stat">
+      <div class="label">Uptime</div>
+      <div class="value neutral" id="uptime">0s</div>
+    </div>
+    <div id="ws-indicator" class="ws-status disconnected">Disconnected</div>
+  </div>
+</div>
+
+<!-- Equity Chart -->
+<div class="card" style="margin-bottom:16px">
+  <h2>Equity Curve</h2>
+  <div class="chart-container">
+    <canvas id="equity-chart"></canvas>
+  </div>
+</div>
+
+<!-- Exchange Cards -->
+<div class="grid grid-3" style="margin-bottom:16px">
+  <div class="card exchange-card">
+    <div class="exchange-name polymarket"><span class="status-dot connected" id="poly-status"></span>Polymarket</div>
+    <div class="metric-row"><span class="metric-label">Trades</span><span class="metric-value" id="poly-trades">0</span></div>
+    <div class="metric-row"><span class="metric-label">P&L</span><span class="metric-value" id="poly-pnl">$0.00</span></div>
+    <div class="metric-row"><span class="metric-label">Win Rate</span><span class="metric-value" id="poly-wr">0%</span></div>
+  </div>
+  <div class="card exchange-card">
+    <div class="exchange-name kalshi"><span class="status-dot disconnected" id="kalshi-status"></span>Kalshi</div>
+    <div class="metric-row"><span class="metric-label">Trades</span><span class="metric-value" id="kalshi-trades">0</span></div>
+    <div class="metric-row"><span class="metric-label">P&L</span><span class="metric-value" id="kalshi-pnl">$0.00</span></div>
+    <div class="metric-row"><span class="metric-label">Win Rate</span><span class="metric-value" id="kalshi-wr">0%</span></div>
+  </div>
+  <div class="card exchange-card">
+    <div class="exchange-name hyperliquid"><span class="status-dot disconnected" id="hl-status"></span>Hyperliquid</div>
+    <div class="metric-row"><span class="metric-label">Trades</span><span class="metric-value" id="hl-trades">0</span></div>
+    <div class="metric-row"><span class="metric-label">P&L</span><span class="metric-value" id="hl-pnl">$0.00</span></div>
+    <div class="metric-row"><span class="metric-label">Win Rate</span><span class="metric-value" id="hl-wr">0%</span></div>
+  </div>
+</div>
+
+<!-- Performance Metrics + Positions -->
+<div class="grid grid-2" style="margin-bottom:16px">
+  <div class="card">
+    <h2>Performance Metrics</h2>
+    <div class="metric-row"><span class="metric-label">Profit Factor</span><span class="metric-value" id="pf">0</span></div>
+    <div class="metric-row"><span class="metric-label">Sharpe Ratio</span><span class="metric-value" id="sharpe">0</span></div>
+    <div class="metric-row"><span class="metric-label">Sortino Ratio</span><span class="metric-value" id="sortino">0</span></div>
+    <div class="metric-row"><span class="metric-label">Max Drawdown</span><span class="metric-value negative" id="max-dd">$0.00</span></div>
+    <div class="metric-row"><span class="metric-label">Avg Win</span><span class="metric-value positive" id="avg-win">$0.00</span></div>
+    <div class="metric-row"><span class="metric-label">Avg Loss</span><span class="metric-value negative" id="avg-loss">$0.00</span></div>
+    <div class="metric-row"><span class="metric-label">Trades/Hour</span><span class="metric-value" id="tph">0</span></div>
+    <div class="metric-row"><span class="metric-label">Avg Hold Time</span><span class="metric-value" id="avg-hold">0ms</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Open Positions</h2>
+    <table>
+      <thead>
+        <tr><th>Exchange</th><th>Symbol</th><th>Side</th><th>Size</th><th>Entry</th><th>Current</th><th>PnL</th></tr>
+      </thead>
+      <tbody id="positions-body">
+        <tr><td colspan="7" style="text-align:center;color:#6b7280">No open positions</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Recent Trades + Strategy Breakdown -->
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Recent Trades</h2>
+    <div class="trades-feed">
+      <table>
+        <thead>
+          <tr><th>Time</th><th>Strategy</th><th>Asset</th><th>Side</th><th>Price</th><th>Size</th><th>PnL</th></tr>
+        </thead>
+        <tbody id="trades-body">
+          <tr><td colspan="7" style="text-align:center;color:#6b7280">Waiting for trades...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Strategy Breakdown</h2>
+    <table>
+      <thead>
+        <tr><th>Strategy</th><th>Trades</th><th>Win Rate</th><th>PF</th><th>PnL</th></tr>
+      </thead>
+      <tbody id="strategy-body">
+        <tr><td colspan="5" style="text-align:center;color:#6b7280">No data yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  // Equity chart setup
+  const ctx = document.getElementById('equity-chart').getContext('2d');
+  const equityChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Equity ($)',
+        data: [],
+        borderColor: '#60a5fa',
+        backgroundColor: 'rgba(96,165,250,0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { display: false },
+        y: {
+          grid: { color: '#1f2937' },
+          ticks: { color: '#6b7280', callback: v => '$' + v.toFixed(2) }
+        }
+      },
+      plugins: { legend: { display: false } },
+      animation: { duration: 0 }
+    }
+  });
+
+  // WebSocket connection
+  let ws;
+  let reconnectTimer;
+
+  function connect() {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${location.host}`);
+
+    ws.onopen = () => {
+      document.getElementById('ws-indicator').className = 'ws-status connected';
+      document.getElementById('ws-indicator').textContent = 'Connected';
+    };
+
+    ws.onclose = () => {
+      document.getElementById('ws-indicator').className = 'ws-status disconnected';
+      document.getElementById('ws-indicator').textContent = 'Disconnected';
+      reconnectTimer = setTimeout(connect, 2000);
+    };
+
+    ws.onerror = () => ws.close();
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        updateDashboard(data);
+      } catch(e) {}
+    };
+  }
+
+  function updateDashboard(d) {
+    // Header stats
+    const equity = d.wallet.totalEquity;
+    const pnl = d.wallet.totalRealizedPnl + d.wallet.unrealizedPnl;
+    const pnlPct = ((equity - 100) / 100 * 100);
+
+    setVal('total-equity', '$' + equity.toFixed(2), equity >= 100 ? 'positive' : 'negative');
+    setVal('total-pnl', (pnl >= 0 ? '+$' : '-$') + Math.abs(pnl).toFixed(2), pnl >= 0 ? 'positive' : 'negative');
+    setVal('pnl-pct', (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%', pnlPct >= 0 ? 'positive' : 'negative');
+    setVal('total-trades', d.performance.totalTrades, 'neutral');
+    setVal('win-rate', (d.performance.winRate * 100).toFixed(1) + '%', d.performance.winRate > 0.5 ? 'positive' : 'neutral');
+    setVal('ticks-sec', d.ticksPerSecond.toFixed(1), 'neutral');
+    setVal('uptime', formatUptime(d.uptime), 'neutral');
+
+    // Performance metrics
+    setText('pf', d.performance.profitFactor);
+    setText('sharpe', d.performance.sharpeRatio);
+    setText('sortino', d.performance.sortinoRatio);
+    setText('max-dd', '$' + d.performance.maxDrawdown.toFixed(2));
+    setText('avg-win', '$' + d.performance.avgWin.toFixed(4));
+    setText('avg-loss', '$' + d.performance.avgLoss.toFixed(4));
+    setText('tph', d.performance.tradesPerHour.toFixed(1));
+    setText('avg-hold', d.performance.avgHoldTimeMs + 'ms');
+
+    // Exchange cards
+    updateExchange('poly', d.perExchangeMetrics.polymarket, d.connectedExchanges.includes('polymarket'));
+    updateExchange('kalshi', d.perExchangeMetrics.kalshi, d.connectedExchanges.includes('kalshi'));
+    updateExchange('hl', d.perExchangeMetrics.hyperliquid, d.connectedExchanges.includes('hyperliquid'));
+
+    // Equity chart
+    if (d.wallet.equityCurve && d.wallet.equityCurve.length > 0) {
+      const labels = d.wallet.equityCurve.map(p => '');
+      const values = d.wallet.equityCurve.map(p => p.equity);
+      equityChart.data.labels = labels;
+      equityChart.data.datasets[0].data = values;
+      equityChart.update();
+    }
+
+    // Positions table
+    const posBody = document.getElementById('positions-body');
+    if (d.positions.length === 0) {
+      posBody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#6b7280">No open positions</td></tr>';
+    } else {
+      posBody.innerHTML = d.positions.map(p => {
+        const pnlClass = p.unrealizedPnl >= 0 ? 'positive' : 'negative';
+        return `<tr>
+          <td>${p.exchange}</td>
+          <td>${p.symbol}</td>
+          <td>${p.side}</td>
+          <td>$${p.size.toFixed(2)}</td>
+          <td>${p.entryPrice.toFixed(4)}</td>
+          <td>${p.currentPrice.toFixed(4)}</td>
+          <td class="${pnlClass}">${p.unrealizedPnl >= 0 ? '+' : ''}$${p.unrealizedPnl.toFixed(4)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Recent trades
+    const tradesBody = document.getElementById('trades-body');
+    if (d.recentTrades.length === 0) {
+      tradesBody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#6b7280">Waiting for trades...</td></tr>';
+    } else {
+      tradesBody.innerHTML = d.recentTrades.slice(-30).reverse().map(t => {
+        const pnlClass = t.pnl >= 0 ? 'positive' : 'negative';
+        const time = new Date(t.closedAt).toLocaleTimeString();
+        return `<tr>
+          <td>${time}</td>
+          <td>${t.strategyId}</td>
+          <td>${t.asset}</td>
+          <td>${t.side}</td>
+          <td>${t.entryPrice.toFixed(4)}</td>
+          <td>$${t.size.toFixed(2)}</td>
+          <td class="${pnlClass}">${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(4)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Strategy breakdown
+    const stratBody = document.getElementById('strategy-body');
+    const entries = Object.entries(d.perStrategyMetrics || {});
+    if (entries.length === 0) {
+      stratBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#6b7280">No data yet</td></tr>';
+    } else {
+      stratBody.innerHTML = entries.map(([id, m]) => {
+        const pnlClass = m.totalPnl >= 0 ? 'positive' : 'negative';
+        return `<tr>
+          <td>${id}</td>
+          <td>${m.totalTrades}</td>
+          <td>${(m.winRate * 100).toFixed(1)}%</td>
+          <td>${m.profitFactor}</td>
+          <td class="${pnlClass}">${m.totalPnl >= 0 ? '+' : ''}$${m.totalPnl.toFixed(2)}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  function updateExchange(prefix, metrics, connected) {
+    const dot = document.getElementById(prefix + '-status');
+    dot.className = 'status-dot ' + (connected ? 'connected' : 'disconnected');
+
+    if (metrics) {
+      setText(prefix + '-trades', metrics.trades);
+      const pnlEl = document.getElementById(prefix + '-pnl');
+      pnlEl.textContent = (metrics.pnl >= 0 ? '+$' : '-$') + Math.abs(metrics.pnl).toFixed(2);
+      pnlEl.className = 'metric-value ' + (metrics.pnl >= 0 ? 'positive' : 'negative');
+      setText(prefix + '-wr', (metrics.winRate * 100).toFixed(1) + '%');
+    }
+  }
+
+  function setVal(id, text, cls) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    if (cls) el.className = 'value ' + cls;
+  }
+
+  function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function formatUptime(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's';
+    if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+    return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+  }
+
+  // Start connection
+  connect();
+</script>
+</body>
+</html>
